@@ -1,0 +1,53 @@
+name: deploy to mirror.yamazaki.buzz
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'main'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref_name}}
+      
+      - name: setup nodejs
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+        
+      # - name: cache npm dependencies
+      #   uses: actions/cache@v3
+      #   with:
+      #     node-version: '22'
+
+      # - name: install npm dependencies
+      #   run: npm install
+
+      - name: setup sshkey
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.SSH_TOKEN }}
+    
+      - name: deploy via ssh
+        uses: appleboy/ssh-action@v0.1.9
+        with: 
+          host: yamazaki.buzz
+          username: yamazaki
+          port: 22
+          script: |
+            cd /var/www/mirror.yamazaki.buzz
+            git fetch origin
+            git reset --hard origin/${{ github.ref_name }}
+            npm install --production
+            pm2 restart mirror.yamazaki.buzz || pm2 start mirror.yamazaki.buzz --name mirror.yamazaki.buzz
+            pm2 save
+            pm2 logs mirror.yamazaki.buzz --lines 1000
+            echo "Deployment completed successfully!"
