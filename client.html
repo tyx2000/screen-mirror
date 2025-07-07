@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <button id="createRoom">create room</button>
+    <button id="toggleMic">toggle mic</button>
+    <input id="roomIdInput" type="text" />
+    <button id="joinRoom">join room</button>
+    <button id="leaveRoom">leave room</button>
+    <video id="localVideo" autoplay width="600" height="400"></video>
+    <video id="remoteVideo" autoplay width="600" height="400"></video>
+    <button id="sendData">send data</button>
+    <button id="screenshot">screenshot</button>
+    <button id="recordScreen">record screen</button>
+    <button id="stopRecordScreen">stop record</button>
+
+    <button id="sendSocketMessage">发送socket消息</button>
+  </body>
+  <script src="webrtc-client.js"></script>
+  <script>
+    const text = document.getElementById("roomIdInput");
+    const sendSocketMessageBtn = document.getElementById("sendSocketMessage");
+
+    sendSocketMessageBtn.onclick = () => {
+      console.log("html send");
+      client.sendToRemote({
+        timestamp: Date.now(),
+        data: text.value,
+        type: "chat-message",
+        from: client.socketId,
+        to: "all",
+      });
+    };
+  </script>
+</html>
