@@ -473,7 +473,7 @@ class WebRTCClient {
       this.log("browser dont support webm");
       return;
     }
-    const recordedChunks = [];
+    let recordedChunks = [];
     this.mediaRecorder = new MediaRecorder(this.localStream, {
       mimeType,
       bitsPerSecond: 2500000,
@@ -537,4 +537,4 @@ class WebRTCClient {
   }
 }
 
-const client = new WebRTCClient("ws://localhost:8080");
+const client = new WebRTCClient("/ws");

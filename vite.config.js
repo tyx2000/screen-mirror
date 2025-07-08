@@ -1,0 +1,77 @@
+import { defineConfig } from "vite";
+import viteBundleObfuscator from "vite-plugin-bundle-obfuscator";
+
+export default defineConfig({
+  root: "src/",
+  server: {
+    port: 3000,
+    strictPort: true,
+    open: true,
+    watch: {
+      usePolling: true,
+    },
+    proxy: {
+      "/ws": {
+        target: "ws://localhost:8080",
+        changeOrigin: true,
+      },
+    },
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+      credentials: true,
+    },
+  },
+  publicDir: "",
+  plugins: [
+    viteBundleObfuscator({
+      excludes: [],
+      enable: true,
+      log: true,
+      autoExcludeNodeModules: true,
+      threadPool: true,
+      options: {
+        compact: true,
+        controlFlowFlattening: true,
+        controlFlowFlatteningThreshold: 1,
+        deadCodeInjection: false,
+        debugProtection: false,
+        debugProtectionInterval: 0,
+        disableConsoleOutput: false,
+        identifierNamesGenerator: "hexadecimal",
+        log: false,
+        numbersToExpressions: false,
+        renameGlobals: false,
+        selfDefending: true,
+        simplify: true,
+        splitStrings: false,
+        ignoreImports: true,
+        stringArray: true,
+        stringArrayCallsTransform: true,
+        stringArrayCallsTransformThreshold: 0.5,
+        stringArrayEncoding: [],
+        stringArrayIndexShift: true,
+        stringArrayRotate: true,
+        stringArrayShuffle: true,
+        stringArrayWrappersCount: 1,
+        stringArrayWrappersChainedCalls: true,
+        stringArrayWrappersParametersMaxCount: 2,
+        stringArrayWrappersType: "variable",
+        stringArrayThreshold: 0.75,
+        unicodeEscapeSequence: false,
+      },
+    }),
+  ],
+  build: {
+    outDir: "../dist",
+    emptyOutDir: true,
+    sourcemap: false,
+    target: "esnext",
+    polyfillDynamicImport: false,
+    assetsDir: "",
+    minify: "esbuild",
+    cssMinify: "esbuild",
+    reportCompressedSize: true,
+  },
+});

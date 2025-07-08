@@ -13,23 +13,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name}}
       
       - name: setup nodejs
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 22
+          cache: npm
         
-      # - name: cache npm dependencies
-      #   uses: actions/cache@v3
-      #   with:
-      #     node-version: '22'
+      - name: cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          node-version: 22
 
-      # - name: install npm dependencies
-      #   run: npm install
+      - name: install npm dependencies
+        run: npm ci
 
       - name: setup sshkey
         uses: webfactory/ssh-agent@v0.5.3
@@ -39,15 +39,16 @@ jobs:
       - name: deploy via ssh
         uses: appleboy/ssh-action@v0.1.9
         with: 
-          host: yamazaki.buzz
-          username: yamazaki
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_TOKEN }}
           port: 22
           script: |
-            cd /var/www/mirror.yamazaki.buzz
+            cd /mirror.yamazaki.buzz
             git fetch origin
             git reset --hard origin/${{ github.ref_name }}
-            npm install --production
-            pm2 restart mirror.yamazaki.buzz || pm2 start mirror.yamazaki.buzz --name mirror.yamazaki.buzz
+            npm install
+            pm2 restart server/webrtc-server.js || pm2 start server/webrtc-server.js
             pm2 save
-            pm2 logs mirror.yamazaki.buzz --lines 1000
+            sudo systemctl reload nginx
             echo "Deployment completed successfully!"
