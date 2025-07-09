@@ -49,7 +49,7 @@ jobs:
         run: docker save -o mirror.yamazaki.buzz-${{ github.sha }}.tar mirror.yamazaki.buzz:${{ github.sha }}
 
       - name: upload docker image tar
-        uses: appleboy/scp-action@v0.1.9
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USERNAME }}
@@ -58,7 +58,7 @@ jobs:
           target: ~/docker-images/
 
       - name: deploy via ssh
-        uses: appleboy/ssh-action@v0.1.9
+        uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USERNAME }}
@@ -80,7 +80,7 @@ jobs:
             echo "Deployment completed successfully!"
 
       - name: cleanup old docker images
-        uses: appleboy/ssh-action@v0.1.9
+        uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USERNAME }}
