@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: 'Branch to deploy'
+        description: "Branch to deploy"
         required: true
-        default: 'main'
+        default: "main"
 
 jobs:
   build-and-deploy:
@@ -16,39 +16,85 @@ jobs:
         uses: actions/checkout@v3
         with:
           ref: ${{ github.ref_name}}
-      
+
       - name: setup nodejs
         uses: actions/setup-node@v3
         with:
           node-version: 22
           cache: npm
-        
+
       - name: cache npm dependencies
         uses: actions/cache@v3
         with:
+          path: ~/.npm
           node-version: 22
+          key: ${{ runner.os }}-npm-${{ github.ref_name }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-${{ github.ref_name }}-
+            ${{ runner.os }}-npm-
+            ${{ runner.os }}-
 
       - name: install npm dependencies
         run: npm ci
 
-      # - name: setup sshkey
-      #   uses: webfactory/ssh-agent@v0.5.3
-      #   with:
-      #     ssh-private-key: ${{ secrets.SSH_TOKEN }}
-    
-      - name: deploy via ssh
-        uses: appleboy/ssh-action@v0.1.9
-        with: 
+      - name: build and tag docker image
+        run: |
+          docker build -t mirror.yamazaki.buzz:${{ github.sha }} .
+          echo "==================build completed=================="
+          docker images mirror.yamazaki.buzz:${{ github.sha }}
+          echo "==================build completed=================="
+          docker tag mirror.yamazaki.buzz:${{ github.sha }} mirror.yamazaki.buzz:latest
+
+      - name: save docker image to tar
+        run: docker save -o mirror.yamazaki.buzz-${{ github.sha }}.tar mirror.yamazaki.buzz:${{ github.sha }}
+
+      - name: upload docker image tar
+        uses: appleboy/scp-action@v0.1.9
+        with:
           host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.SSH_TOKEN }}
-          port: 22
+          source: mirror.yamazaki.buzz-${{ github.sha }}.tar
+          target: ~/docker-images/
+
+      - name: deploy via ssh
+        uses: appleboy/ssh-action@v0.1.9
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_TOKEN }}
           script: |
-            cd /mirror.yamazaki.buzz
-            git fetch origin
-            git reset --hard origin/${{ github.ref_name }}
-            npm install
-            pm2 restart server/webrtc-server.js || pm2 start server/webrtc-server.js
-            pm2 save
-            sudo systemctl reload nginx
+            docker load -i ~/docker-images/mirror.yamazaki.buzz-${{ github.sha }}.tar
+            rm -rf ~/docker-images/mirror.yamazaki.buzz-${{ github.sha }}.tar
+            docker stop mirror.yamazaki.buzz || true
+            docker rm mirror.yamazaki.buzz || true
+            docker run -d --name mirror.yamazaki.buzz -p 80:80 mirror.yamazaki.buzz:${{ github.sha }}
+
+            sleep 5
+            if ! docker ps -f name=mirror.yamazaki.buzz | grep -q mirror.yamazaki.buzz; then
+              echo "Deployment failed: Container is not running."
+              exit 1
+            else
+              echo "Deployment successful: Container is running."
+            fi
             echo "Deployment completed successfully!"
+
+      - name: cleanup old docker images
+        uses: appleboy/ssh-action@v0.1.9
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_TOKEN }}
+          script: |
+            docker image prune -f
+
+            OLD_IMAGES=$(docker images mirror.yamazaki.buzz --format "{{.Repository}}:{{.Tag}}" | grep -v latest | grep -v ${{ github.sha }})
+            if [ -n "$OLD_IMAGES" ]; then
+              echo "Removing old images:"
+              echo "$OLD_IMAGES"
+              docker rmi $OLD_IMAGES || true
+            else
+              echo "No old images to remove."
+            fi
+
+            echo "Cleanup completed successfully!"

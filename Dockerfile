@@ -6,8 +6,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# FROM node:22-slim
-# WORKDIR /app
+RUN npm install -g serve
 
-EXPOSE 8080
-CMD ["npm", "run", "start"]
+EXPOSE 8080 3001
+CMD ["sh", "-c", "node server/webrtc-server.js & npx serve -s dist -l 3001"]
