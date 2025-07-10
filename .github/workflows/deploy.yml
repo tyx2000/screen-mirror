@@ -1,4 +1,4 @@
-name: deploy to mirror.yamazaki.buzz
+name: deploy to subdomain
 
 on:
   workflow_dispatch:
