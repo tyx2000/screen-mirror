@@ -39,14 +39,14 @@ jobs:
 
       - name: build and tag docker image
         run: |
-          docker build -t mirror.yamazaki.buzz:${{ github.sha }} .
+          docker build -t mirror-screen:${{ github.sha }} .
           echo "==================build completed=================="
-          docker images mirror.yamazaki.buzz:${{ github.sha }}
+          docker images mirror-screen:${{ github.sha }}
           echo "==================build completed=================="
-          docker tag mirror.yamazaki.buzz:${{ github.sha }} mirror.yamazaki.buzz:latest
+          docker tag mirror-screen:${{ github.sha }} mirror-screen:latest
 
       - name: save docker image to tar
-        run: docker save -o mirror.yamazaki.buzz-${{ github.sha }}.tar mirror.yamazaki.buzz:${{ github.sha }}
+        run: docker save -o mirror-screen-${{ github.sha }}.tar mirror-screen:${{ github.sha }}
 
       - name: upload docker image tar
         uses: appleboy/scp-action@v1.0.0
@@ -54,7 +54,7 @@ jobs:
           host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.SSH_TOKEN }}
-          source: mirror.yamazaki.buzz-${{ github.sha }}.tar
+          source: mirror-screen-${{ github.sha }}.tar
           target: ~/docker-images/
 
       - name: deploy via ssh
@@ -64,37 +64,44 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.SSH_TOKEN }}
           script: |
-            docker load -i ~/docker-images/mirror.yamazaki.buzz-${{ github.sha }}.tar
-            rm -rf ~/docker-images/mirror.yamazaki.buzz-${{ github.sha }}.tar
-            docker stop mirror.yamazaki.buzz || true
-            docker rm mirror.yamazaki.buzz || true
-            docker run -d --name mirror.yamazaki.buzz -p 80:80 mirror.yamazaki.buzz:${{ github.sha }}
+            docker load -i ~/docker-images/mirror-screen-${{ github.sha }}.tar
 
-            sleep 5
-            if ! docker ps -f name=mirror.yamazaki.buzz | grep -q mirror.yamazaki.buzz; then
-              echo "Deployment failed: Container is not running."
-              exit 1
-            else
-              echo "Deployment successful: Container is running."
-            fi
-            echo "Deployment completed successfully!"
+            echo "==================docker images after load=================="
+            docker images mirror-screen:${{ github.sha }}
+            echo "==================docker images after load=================="
 
-      - name: cleanup old docker images
-        uses: appleboy/ssh-action@v1.2.2
-        with:
-          host: ${{ secrets.VPS_IP }}
-          username: ${{ secrets.VPS_USERNAME }}
-          key: ${{ secrets.SSH_TOKEN }}
-          script: |
-            docker image prune -f
+            rm -rf ~/docker-images/mirror-screen-${{ github.sha }}.tar
 
-            OLD_IMAGES=$(docker images mirror.yamazaki.buzz --format "{{.Repository}}:{{.Tag}}" | grep -v latest | grep -v ${{ github.sha }})
-            if [ -n "$OLD_IMAGES" ]; then
-              echo "Removing old images:"
-              echo "$OLD_IMAGES"
-              docker rmi $OLD_IMAGES || true
-            else
-              echo "No old images to remove."
-            fi
+            cd ~/servers/
+            sed -i "s|mirror-screen.*|mirror-screen:${{ github.sha }}|g" docker-compose.yml
+            echo "====================update docker-compose.yml=============="
+            cat docker-compose.yml
 
-            echo "Cleanup completed successfully!"
+      #       sleep 5
+      #       if ! docker ps -f name=mirror-screen | grep -q mirror-screen; then
+      #         echo "Deployment failed: Container is not running."
+      #         exit 1
+      #       else
+      #         echo "Deployment successful: Container is running."
+      #       fi
+      #       echo "Deployment completed successfully!"
+
+      # - name: cleanup old docker images
+      #   uses: appleboy/ssh-action@v1.2.2
+      #   with:
+      #     host: ${{ secrets.VPS_IP }}
+      #     username: ${{ secrets.VPS_USERNAME }}
+      #     key: ${{ secrets.SSH_TOKEN }}
+      #     script: |
+      #       docker image prune -f
+
+      #       OLD_IMAGES=$(docker images mirror.yamazaki.buzz --format "{{.Repository}}:{{.Tag}}" | grep -v latest | grep -v ${{ github.sha }})
+      #       if [ -n "$OLD_IMAGES" ]; then
+      #         echo "Removing old images:"
+      #         echo "$OLD_IMAGES"
+      #         docker rmi $OLD_IMAGES || true
+      #       else
+      #         echo "No old images to remove."
+      #       fi
+
+      #       echo "Cleanup completed successfully!"
