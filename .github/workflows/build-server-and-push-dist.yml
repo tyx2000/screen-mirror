@@ -40,7 +40,7 @@ jobs:
 
       - name: build and tag docker image
         run: |
-          docker build -f ./Dockerfile.server -t webrtc-server:${{ github.sha }} .
+          docker build -f Dockerfile.server -t webrtc-server:${{ github.sha }} .
           echo "==================build completed=================="
           docker images webrtc-server:${{ github.sha }}
           echo "==================build completed=================="
