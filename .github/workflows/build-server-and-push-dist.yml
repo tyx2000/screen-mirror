@@ -106,6 +106,20 @@ jobs:
       - name: build dist
         run: npm run build
 
+      - name: delete remote previous dist
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_TOKEN }}
+          script: |
+            if [ -d ~/servers/dist ]; then
+              echo "Removing previous dist directory..."
+              rm -rf ~/servers/dist
+            else  
+              echo "No previous dist directory found."
+            fi
+
       - name: push dist to server
         uses: appleboy/scp-action@v1.0.0
         with:
