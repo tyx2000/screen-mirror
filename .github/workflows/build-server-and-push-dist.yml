@@ -9,75 +9,6 @@ on:
         default: "main"
 
 jobs:
-  build-server:
-    name: just build server image
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ github.ref_name }}
-
-      - name: setup nodejs
-        uses: actions/setup-node@v3
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: cache npm dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.npm
-          node-version: 22
-          key: ${{ runner.os }}-npm-${{ github.ref_name }}-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-${{ github.ref_name }}-
-            ${{ runner.os }}-npm-
-            ${{ runner.os }}-
-      
-      - name: install npm dependencies
-        run: npm ci
-
-      - name: build and tag docker image
-        run: |
-          docker build -f Dockerfile.server -t webrtc-server:${{ github.sha }} .
-          echo "==================build completed=================="
-          docker images webrtc-server:${{ github.sha }}
-          echo "==================build completed=================="
-          docker tag webrtc-server:${{ github.sha }} webrtc-server:latest
-
-      - name: save docker image to tar
-        run: docker save -o webrtc-server-${{ github.sha }}.tar webrtc-server:${{ github.sha }}
-      
-      - name: upload docker image tar
-        uses: appleboy/scp-action@v1.0.0
-        with:
-          host: ${{ secrets.VPS_IP }}
-          username: ${{ secrets.VPS_USERNAME }}
-          key: ${{ secrets.SSH_TOKEN }}
-          source: webrtc-server-${{ github.sha }}.tar
-          target: ~/docker-images/
-      
-      - name: deploy via ssh
-        uses: appleboy/ssh-action@v1.2.2
-        with:
-          host: ${{ secrets.VPS_IP }}
-          username: ${{ secrets.VPS_USERNAME }}
-          key: ${{ secrets.SSH_TOKEN }}
-          script: |
-            cd ~/docker-images/
-            docker load -i webrtc-server-${{ github.sha }}.tar
-            echo "==================docker image loaded=================="
-            docker images webrtc-server:${{ github.sha }}
-            echo "==================docker image loaded=================="
-
-            rm -rf ~/docker-images/webrtc-server-${{ github.sha }}.tar
-
-            cd ~/servers/
-            sed -i "s|webrtc-server.*|webrtc-server:${{ github.sha }}|g" docker-compose.yml
-            echo "====================update docker-compose.yml=============="
-            cat docker-compose.yml
-            
   build-dist:
     name: build and push dist
     runs-on: ubuntu-latest
@@ -128,3 +59,74 @@ jobs:
           key: ${{ secrets.SSH_TOKEN }}
           source: dist/
           target: ~/servers/
+
+
+  build-server:
+    name: just build server image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: setup nodejs
+        uses: actions/setup-node@v3
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: cache npm dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ github.ref_name }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-${{ github.ref_name }}-
+            ${{ runner.os }}-npm-
+            ${{ runner.os }}-
+      
+      - name: install npm dependencies
+        run: npm ci
+
+      - name: build and tag docker image
+        run: |
+          docker build -f Dockerfile.server -t webrtc-server:${{ github.sha }} .
+          echo "==================build completed=================="
+          docker images webrtc-server:${{ github.sha }}
+          echo "==================build completed=================="
+          docker tag webrtc-server:${{ github.sha }} webrtc-server:latest
+
+      - name: save docker image to tar
+        run: docker save -o webrtc-server-${{ github.sha }}.tar webrtc-server:${{ github.sha }}
+      
+      - name: upload docker image tar
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_TOKEN }}
+          source: webrtc-server-${{ github.sha }}.tar
+          target: ~/docker-images/
+      
+      - name: deploy via ssh
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_TOKEN }}
+          script: |
+            cd ~/docker-images/
+            docker load -i webrtc-server-${{ github.sha }}.tar
+            echo "==================docker image loaded=================="
+            docker images webrtc-server:${{ github.sha }}
+            echo "==================docker image loaded=================="
+
+            rm -rf ~/docker-images/webrtc-server-${{ github.sha }}.tar
+
+            cd ~/servers/
+            sed -i "s|webrtc-server.*|webrtc-server:${{ github.sha }}|g" docker-compose.yml
+
+            docker-compose down
+            docker-compose up -d
+          
