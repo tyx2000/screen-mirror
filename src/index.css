@@ -1,0 +1,13 @@
+button {
+    padding: 0 15px;
+    height: 34px;
+    border-radius: 8px;
+    background-color: #fff;
+    border: 1px solid #ccc;
+}
+
+input {
+    height: 34px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+}
