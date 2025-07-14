@@ -4,7 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Screen Mirror</title>
-    <link rel="stylesheet" href="./index.css">
+    <link
+      type="image/png"
+      sizes="96*96"
+      rel="icon"
+      href="./icons8-mirror-96.png"
+    />
+    <link rel="stylesheet" href="./index.css" />
   </head>
   <body>
     <button id="createRoom">create room</button>
@@ -22,19 +28,4 @@
     <button id="sendSocketMessage">发送socket消息</button>
   </body>
   <script type="module" src="./webrtc-client.js"></script>
-  <script>
-    const text = document.getElementById("roomIdInput");
-    const sendSocketMessageBtn = document.getElementById("sendSocketMessage");
-
-    sendSocketMessageBtn.onclick = () => {
-      console.log("html send");
-      client.sendToRemote({
-        timestamp: Date.now(),
-        data: text.value,
-        type: "chat-message",
-        from: client.socketId,
-        to: "all",
-      });
-    };
-  </script>
 </html>

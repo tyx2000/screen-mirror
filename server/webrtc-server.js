@@ -165,13 +165,13 @@ const handleMessage = (socketId, message) => {
 
 wss.on("connection", (ws, req) => {
   console.log("wss connected");
-  const url = new URL(req.url, "ws://localhost");
-  const socketId = url.searchParams.get("socketId");
+  // const url = new URL(req.url, "ws://localhost");
+  // const socketId = url.searchParams.get("socketId");
+
+  const socketId = Math.random().toString(36).slice(2, 8).toUpperCase();
   console.log({ socketId });
 
   clients.set(socketId, ws);
-
-  // sendToAllClient();
 
   ws.onopen = () => {
     console.log("ws open");
@@ -179,8 +179,6 @@ wss.on("connection", (ws, req) => {
 
   ws.onclose = () => {
     clients.delete(socketId);
-
-    // sendToAllClient();
 
     console.log("ws closed");
   };

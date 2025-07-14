@@ -129,4 +129,10 @@ jobs:
 
             docker-compose down
             docker-compose up -d
+
+            IMAGE_TAGS_TO_REMOVE=$(docker images --filter=reference='webrtc-server:*' --format '{{.Tag}} {{.CreatedAt}}' | sort -k2 -k3 -r | awk 'NR>2 {print $1}')
+            for tag in $IMAGE_TAGS_TO_REMOVE; do
+              echo "Removing old image tag: $tag"
+              docker rmi webrtc-server:$tag || true
+            done
           
