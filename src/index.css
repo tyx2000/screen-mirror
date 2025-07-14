@@ -1,13 +1,45 @@
-button {
-    padding: 0 15px;
-    height: 34px;
-    border-radius: 8px;
-    background-color: #fff;
-    border: 1px solid #ccc;
+body {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
-input {
-    height: 34px;
-    border: 1px solid #ccc;
-    border-radius: 8px;
+#initContainer {
+  margin: 100px auto;
+  display: flex;
+  flex-direction: column;
+  gap: 50px;
+  align-items: center;
+}
+
+#createRoom,
+#joinRoom {
+  width: 200px;
+  height: 40px;
+  border-radius: 8px;
+  background-color: #fff;
+  border: 1px solid #ccc;
+}
+
+.inputContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+#roomIdInput {
+  width: 200px;
+  height: 34px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  text-align: center;
+  line-height: 34px;
+  font-size: 20px;
+}
+
+#screenStream {
+  width: 100%;
+  object-fit: contain;
 }

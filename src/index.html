@@ -13,19 +13,24 @@
     <link rel="stylesheet" href="./index.css" />
   </head>
   <body>
-    <button id="createRoom">create room</button>
+    <!-- <button id="createRoom">create room</button>
     <button id="toggleMic">toggle mic</button>
     <input id="roomIdInput" type="text" />
     <button id="joinRoom">join room</button>
     <button id="leaveRoom">leave room</button>
-    <video id="localVideo" autoplay width="600" height="400"></video>
-    <video id="remoteVideo" autoplay width="600" height="400"></video>
     <button id="sendData">send data</button>
     <button id="screenshot">screenshot</button>
     <button id="recordScreen">record screen</button>
-    <button id="stopRecordScreen">stop record</button>
-
-    <button id="sendSocketMessage">发送socket消息</button>
+    <button id="stopRecordScreen">stop record</button> -->
+    <div id="initContainer">
+      <h1>Screen Mirror</h1>
+      <button id="createRoom">分享屏幕</button>
+      <div class="inputContainer">
+        <input id="roomIdInput" type="text" maxlength="6" />
+        <div id="roomIdInputTip" style="color: red"></div>
+      </div>
+      <button id="joinRoom">加入房间</button>
+    </div>
   </body>
   <script type="module" src="./webrtc-client.js"></script>
 </html>

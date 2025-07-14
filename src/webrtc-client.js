@@ -21,7 +21,6 @@ class WebRTCClient {
     // signaling server
     this.signalingServerUrl = signalingServerUrl;
     this.socket = null;
-    this.socketId = null;
     this.isInitiator = false;
 
     // callback
@@ -52,71 +51,80 @@ class WebRTCClient {
 
     const createRoomBtn = document.getElementById("createRoom");
     const joinRoomBtn = document.getElementById("joinRoom");
-    const leaveRoomBtn = document.getElementById("leaveRoom");
+    // const leaveRoomBtn = document.getElementById("leaveRoom");
     const roomIdInput = document.getElementById("roomIdInput");
+    const roomIdInputTip = document.getElementById("roomIdInputTip");
 
-    const localVideo = document.getElementById("localVideo");
-    const remoteVideo = document.getElementById("remoteVideo");
+    // const localVideo = document.getElementById("localVideo");
+    // const remoteVideo = document.getElementById("remoteVideo");
 
-    const sendDataBtn = document.getElementById("sendData");
+    // const sendDataBtn = document.getElementById("sendData");
 
-    const screenShotBtn = document.getElementById("screenshot");
-    const recordScreenBtn = document.getElementById("recordScreen");
-    const stopRecordScreenBtn = document.getElementById("stopRecordScreen");
+    // const screenShotBtn = document.getElementById("screenshot");
+    // const recordScreenBtn = document.getElementById("recordScreen");
+    // const stopRecordScreenBtn = document.getElementById("stopRecordScreen");
 
-    screenShotBtn.onclick = () =>
-      this.captureScreenshot(this.isInitiator ? localVideo : remoteVideo);
-    stopRecordScreenBtn.onclick = () => {
-      if (this.mediaRecorder) {
-        this.mediaRecorder.stop();
-      }
-    };
+    // screenShotBtn.onclick = () =>
+    //   this.captureScreenshot(this.isInitiator ? localVideo : remoteVideo);
+    // stopRecordScreenBtn.onclick = () => {
+    //   if (this.mediaRecorder) {
+    //     this.mediaRecorder.stop();
+    //   }
+    // };
 
-    recordScreenBtn.onclick = () => this.recordScreen();
+    // recordScreenBtn.onclick = () => this.recordScreen();
 
-    sendDataBtn.onclick = () => this.sendDataWithChannel(roomIdInput.value);
+    // sendDataBtn.onclick = () => this.sendDataWithChannel(roomIdInput.value);
 
-    this.onLocalStream = (stream) => {
-      localVideo.srcObject = stream;
-    };
-    this.onRemoteStream = (stream) => {
-      remoteVideo.srcObject = stream;
-    };
+    // this.onLocalStream = (stream) => {
+    //   localVideo.srcObject = stream;
+    // };
+    // this.onRemoteStream = (stream) => {
+    //   remoteVideo.srcObject = stream;
+    // };
 
     createRoomBtn.onclick = async () => {
-      this.roomId = this.generateRandomString();
-
       this.isInitiator = true;
       this.sendToRemote({
         type: "create-room",
       });
 
-      await this.createPeerConnection();
+      // await this.createPeerConnection();
 
-      // 客户端 getMediaStream 在创建房间/加入房间后调用，可能导致媒体轨道添加万余ice候选收集
+      // 客户端 getMediaStream 在创建房间/加入房间后调用，可能导致媒体轨道添加冗余ice候选收集
       // 建议在createPeerConnection后立即添加媒体流
-      await this.getMediaStream();
+      // await this.getMediaStream();
     };
 
     joinRoomBtn.onclick = async () => {
       this.isInitiator = false;
       this.roomId = roomIdInput.value;
-      await this.createPeerConnection();
-      this.sendToRemote({
-        type: "join-room",
-      });
+      if (this.roomId) {
+        roomIdInputTip.textContent = "";
+        if (this.roomId.length < 6) {
+          roomIdInputTip.textContent = "房间号不存在";
+          return;
+        } else {
+          await this.createPeerConnection();
+
+          this.showScreenStream();
+          this.sendToRemote({
+            type: "join-room",
+          });
+        }
+      } else {
+        roomIdInputTip.textContent = "请输入房间号";
+        return;
+      }
     };
 
-    leaveRoomBtn.onclick = () => {};
+    // leaveRoomBtn.onclick = () => {};
   }
 
   connectToSignalingServer() {
     return new Promise((resolve, reject) => {
       try {
-        this.socketId = this.generateRandomString();
-        this.socket = new WebSocket(
-          this.signalingServerUrl + `?socketId=${this.socketId}`,
-        );
+        this.socket = new WebSocket(this.signalingServerUrl);
         this.socket.onopen = () => {
           this.log("connected to signaling server");
           resolve();
@@ -146,6 +154,22 @@ class WebRTCClient {
       );
     } else {
       this.log("signaling server error");
+    }
+  }
+
+  async handleCreatedRoom(data) {
+    this.roomId = data.roomId;
+    document.title = this.roomId;
+
+    try {
+      await this.createPeerConnection();
+      await this.getMediaStream();
+    } catch (error) {
+      this.peerConnection = null;
+      this.sendToRemote({
+        type: "destroy-room",
+        roomId: this.roomId,
+      });
     }
   }
 
@@ -237,11 +261,22 @@ class WebRTCClient {
     console.log("handleChatMessage", data);
   }
 
+  handleErrorMessage(data) {
+    const roomIdInputTip = document.getElementById("roomIdInputTip");
+    if (data.code === 404) {
+      roomIdInputTip.textContent = "房间号不存在";
+    }
+  }
+
   handleSocketMessage(message) {
     const data = JSON.parse(message.data);
+    console.log("handleSocketMessage", data);
     switch (data.type) {
       case "chat-message":
         this.handleChatMessage(data);
+        break;
+      case "created-room":
+        this.handleCreatedRoom(data);
         break;
       case "joined-room":
         this.handleJoinedRoom();
@@ -256,6 +291,7 @@ class WebRTCClient {
         this.handleCandidate(data);
         break;
       case "error":
+        this.handleErrorMessage(data);
         console.log(data.message);
     }
   }
@@ -361,14 +397,36 @@ class WebRTCClient {
     } catch (error) {}
   }
 
+  showScreenStream() {
+    const initContainer = document.getElementById("initContainer");
+    if (initContainer) {
+      initContainer.remove();
+    }
+    const screenStream = document.createElement("video");
+    screenStream.id = "screenStream";
+    screenStream.autoplay = true;
+    document.body.appendChild(screenStream);
+    if (this.isInitiator) {
+      this.onLocalStream = (stream) => {
+        screenStream.srcObject = stream;
+      };
+    } else {
+      this.onRemoteStream = (stream) => {
+        screenStream.srcObject = stream;
+      };
+    }
+  }
+
   getMediaStream() {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       navigator.mediaDevices
         .getDisplayMedia({
           video: { frameRate: 60, width: 1920, height: 1080 },
           audio: true,
         })
         .then((stream) => {
+          this.showScreenStream();
+
           this.localStream = stream;
           this.onLocalStream(this.localStream);
 

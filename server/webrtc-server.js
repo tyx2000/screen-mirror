@@ -34,12 +34,23 @@ const handleJoinRoom = (data) => {
       });
     }
   } else {
-    sendToClient(socketId, { type: "error", message: "roomid not exist" });
+    sendToClient(socketId, {
+      type: "error",
+      code: 404,
+      message: "roomid not exist",
+    });
   }
 };
 
 const handleLeaveRoom = (data) => {
   const { roomId, socketId } = data;
+};
+
+const handleDestroyRoom = (data) => {
+  console.log(data, rooms);
+  const { roomId, socketId } = data;
+  delete rooms[roomId];
+  console.log(rooms);
 };
 
 // 处理房间创建者发送来的offer，转发给房间里的其他客户端
@@ -145,6 +156,9 @@ const handleMessage = (socketId, message) => {
     case "leave-room":
       handleLeaveRoom(newData);
       break;
+    case "destroy-room":
+      handleDestroyRoom(newData);
+      break;
     case "offer":
       handleOffer(newData);
       break;
@@ -168,7 +182,8 @@ wss.on("connection", (ws, req) => {
   // const url = new URL(req.url, "ws://localhost");
   // const socketId = url.searchParams.get("socketId");
 
-  const socketId = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const socketId =
+    Math.random().toString(36).slice(2).toUpperCase() + Date.now();
   console.log({ socketId });
 
   clients.set(socketId, ws);
