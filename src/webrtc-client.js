@@ -22,6 +22,7 @@ class WebRTCClient {
     this.signalingServerUrl = signalingServerUrl;
     this.socket = null;
     this.isInitiator = false;
+    this.connectedStamp = null;
 
     // callback
     this.onLocalStream = options.onLocalStream || (() => {});
@@ -130,6 +131,7 @@ class WebRTCClient {
         this.socket.onopen = () => {
           this.log("connected to signaling server");
           connectionStatus.textContent = "connected";
+          this.connectedStamp = Date.now();
           resolve();
         };
         // 使用箭头函数，确保this指向WebRTCClient实例
@@ -138,7 +140,10 @@ class WebRTCClient {
           this.log("socket error");
         };
         this.socket.onclose = () => {
-          connectionStatus.textContent = "disconnected";
+          connectionStatus.textContent =
+            "disconnected " + (Date.now() - this.connectedStamp) + "ms";
+          this.connectedStamp = null;
+          this.socket = null;
           this.log("disconnect from signaling server");
         };
       } catch (error) {
