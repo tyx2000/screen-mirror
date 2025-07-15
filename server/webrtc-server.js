@@ -23,6 +23,7 @@ const handleCreateRoom = (data) => {
 
 const handleJoinRoom = (data) => {
   console.log("join room");
+  // todo 检查房间是否存在 检查owner socket链接是否open
   const { socketId, roomId } = data;
   if (rooms[roomId]) {
     if (!rooms[roomId].participators.includes(socketId)) {
