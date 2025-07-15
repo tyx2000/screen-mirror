@@ -122,11 +122,14 @@ class WebRTCClient {
   }
 
   connectToSignalingServer() {
+    const connectionStatus = document.getElementById("connectionStatus");
+    connectionStatus.textContent = "connecting...";
     return new Promise((resolve, reject) => {
       try {
         this.socket = new WebSocket(this.signalingServerUrl);
         this.socket.onopen = () => {
           this.log("connected to signaling server");
+          connectionStatus.textContent = "connected";
           resolve();
         };
         // 使用箭头函数，确保this指向WebRTCClient实例
@@ -135,6 +138,7 @@ class WebRTCClient {
           this.log("socket error");
         };
         this.socket.onclose = () => {
+          connectionStatus.textContent = "disconnected";
           this.log("disconnect from signaling server");
         };
       } catch (error) {
