@@ -1,14 +1,14 @@
 name: only build server image and build dist
 
 on:
-  # push:
-  #   branches: ['main']
-  workflow_dispatch:
-    inputs:
-      branch:
-        description: "Branch to deploy"
-        required: true
-        default: "main"
+  push:
+    branches: ['main']
+  # workflow_dispatch:
+  #   inputs:
+  #     branch:
+  #       description: "Branch to deploy"
+  #       required: true
+  #       default: "main"
 
 jobs:
   build-dist:

@@ -418,7 +418,7 @@ class WebRTCClient {
   }
 
   getMediaStream() {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       navigator.mediaDevices
         .getDisplayMedia({
           video: { frameRate: 60, width: 1920, height: 1080 },
@@ -436,9 +436,9 @@ class WebRTCClient {
 
           resolve();
         })
-        .catch(() => {
+        .catch((error) => {
           this.log("failed to get media stream");
-          reject();
+          reject(error);
         });
     });
   }
