@@ -132,6 +132,11 @@ class WebRTCClient {
           this.log("connected to signaling server");
           connectionStatus.textContent = "connected";
           this.connectedStamp = Date.now();
+
+          const reconnectionButton =
+            document.getElementById("reconnectionButton");
+          reconnectionButton && reconnectionButton.remove();
+
           resolve();
         };
         // 使用箭头函数，确保this指向WebRTCClient实例
@@ -140,11 +145,24 @@ class WebRTCClient {
           this.log("socket error");
         };
         this.socket.onclose = () => {
+          // todo 自动重连
+          document.title = "Screen Mirror";
           connectionStatus.textContent =
-            "disconnected " + (Date.now() - this.connectedStamp) + "ms";
+            "disconnected after " +
+            (Date.now() - this.connectedStamp) / 1000 +
+            "s";
           this.connectedStamp = null;
           this.socket = null;
           this.log("disconnect from signaling server");
+
+          const reconnectionButton = document.createElement("button");
+          reconnectionButton.id = "reconnectionButton";
+          reconnectionButton.textContent = "Reconnect";
+          reconnectionButton.onclick = async () => {
+            reconnectionButton.remove();
+            await this.connectToSignalingServer();
+          };
+          document.body.appendChild(reconnectionButton);
         };
       } catch (error) {
         this.log("failed to connect to signaling server");
@@ -290,6 +308,10 @@ class WebRTCClient {
       case "joined-room":
         this.handleJoinedRoom();
         break;
+      case "room-destroyed":
+        // 会议发起者断开连接，房间销毁，作为参与者自动离开房间
+        // todo 与会者之间可以继续交流
+        break;
       case "offer":
         this.handleOffer(data);
         break;
@@ -325,6 +347,11 @@ class WebRTCClient {
           this.log("peerconnection ontrack");
           this.remoteStream = event.streams[0];
           this.onRemoteStream(this.remoteStream);
+
+          // 接收远端stream被中断
+          event.track.onended = () => {
+            this.handleStreamEnded();
+          };
         };
 
         if (this.isInitiator) {
@@ -409,7 +436,7 @@ class WebRTCClient {
   showScreenStream() {
     const initContainer = document.getElementById("initContainer");
     if (initContainer) {
-      initContainer.remove();
+      initContainer.style.display = "none";
     }
     const screenStream = document.createElement("video");
     screenStream.id = "screenStream";
@@ -423,6 +450,19 @@ class WebRTCClient {
       this.onRemoteStream = (stream) => {
         screenStream.srcObject = stream;
       };
+    }
+  }
+
+  // 发起者分享被中断
+  handleStreamEnded() {
+    document.title = "Screen Mirror";
+    const initContainer = document.getElementById("initContainer");
+    const screenStream = document.getElementById("screenStream");
+    if (initContainer) {
+      initContainer.style.display = "flex";
+    }
+    if (screenStream) {
+      screenStream.remove();
     }
   }
 
@@ -441,7 +481,14 @@ class WebRTCClient {
 
           stream.getTracks().forEach((track) => {
             this.peerConnection.addTrack(track, stream);
+
+            track.onended = () => this.handleStreamEnded();
+            track.onmute = () => {};
+            track.onunmute = () => {};
           });
+
+          stream.onaddtrack = () => {};
+          stream.onremovetrack = () => {};
 
           resolve();
         })

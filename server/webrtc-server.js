@@ -29,7 +29,7 @@ const handleJoinRoom = (data) => {
     if (!rooms[roomId].participators.includes(socketId)) {
       rooms[roomId].participators.push(socketId);
 
-      // 其他客户端加入成功，给房间创建者发送 joined-room 消息，触发offer交换
+      // 其他客户端加入成功，给房间创建者发送 joined-room 消息，开始交换offer
       sendToClient(rooms[roomId].owner, {
         type: "joined-room",
       });
@@ -104,7 +104,7 @@ const handleShareScreen = (data) => {
 
 const sendToClient = (clientId, data) => {
   const client = clients.get(clientId);
-  if (clientId && client) {
+  if (clientId && client && client.readyState === WebSocket.OPEN) {
     client.send(JSON.stringify(data));
   } else {
     console.log("client not exist");
@@ -178,6 +178,33 @@ const handleMessage = (socketId, message) => {
   }
 };
 
+const handleSocketClosed = (socketId) => {
+  console.log("socket closed", socketId);
+  clients.delete(socketId);
+
+  // 从房间中删除该客户端
+  for (const roomId in rooms) {
+    const room = rooms[roomId];
+    if (room.owner === socketId) {
+      // 如果是房间创建者，删除整个房间，通知参与者会议结束
+      room.participators.forEach((client) => {
+        sendToClient(client, {
+          type: "room-destroyed",
+          message: "Room owner disconnected, room destroyed.",
+        });
+      });
+      delete rooms[roomId];
+      console.log(`Room ${roomId} deleted due to owner disconnecting.`);
+    } else {
+      // 如果是参与者，从参与者列表中删除
+      room.participators = room.participators.filter(
+        (client) => client !== socketId,
+      );
+      console.log(`Client ${socketId} removed from room ${roomId}.`);
+    }
+  }
+};
+
 wss.on("connection", (ws, req) => {
   console.log("wss connected");
   // const url = new URL(req.url, "ws://localhost");
@@ -193,11 +220,7 @@ wss.on("connection", (ws, req) => {
     console.log("ws open");
   };
 
-  ws.onclose = () => {
-    clients.delete(socketId);
-
-    console.log("ws closed");
-  };
+  ws.onclose = () => handleSocketClosed(socketId);
 
   ws.onerror = (error) => {
     console.log("ws error", error);
