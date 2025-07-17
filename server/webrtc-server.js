@@ -130,12 +130,32 @@ const sendToAllClient = (data = {}) => {
 
 const handleChatMessage = (data) => {
   const { socketId } = data;
-  console.log("handleChatMessage", socketId);
-  sendToAllClient({
-    from: socketId,
-    type: "message",
-    data: data.data,
+  console.log("handleChatMessage", data);
+
+  clients.keys().forEach((clientId) => {
+    if (clientId.startsWith("text-") && clientId !== socketId) {
+      const client = clients.get(clientId);
+      if (client && client.readyState === WebSocket.OPEN) {
+        client.send(
+          JSON.stringify({
+            type: "chat-message",
+            content: data.content,
+            timestamp: data.timestamp,
+            from: socketId,
+            to: clientId,
+          }),
+        );
+      } else {
+        console.log(`Client ${clientId} is not open or does not exist.`);
+      }
+    }
   });
+
+  // sendToAllClient({
+  //   from: socketId,
+  //   type: "message",
+  //   data: data.data,
+  // });
 };
 
 const handleMessage = (socketId, message) => {
@@ -207,11 +227,12 @@ const handleSocketClosed = (socketId) => {
 
 wss.on("connection", (ws, req) => {
   console.log("wss connected");
-  // const url = new URL(req.url, "ws://localhost");
-  // const socketId = url.searchParams.get("socketId");
+  const url = new URL(req.url, "ws://localhost");
+  const socketIdFromURL = url.searchParams.get("socketId");
 
   const socketId =
-    Math.random().toString(36).slice(2).toUpperCase() + Date.now();
+    socketIdFromURL ||
+    `stream-${Math.random().toString(36).slice(2).toUpperCase() + Date.now()}`;
   console.log({ socketId });
 
   clients.set(socketId, ws);

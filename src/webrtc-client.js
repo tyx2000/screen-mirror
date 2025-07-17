@@ -120,6 +120,16 @@ class WebRTCClient {
     };
 
     // leaveRoomBtn.onclick = () => {};
+
+    const sendSocketMessageButton =
+      document.getElementById("sendSocketMessage");
+    sendSocketMessageButton.onclick = () => {
+      this.sendToRemote({
+        type: "chat-message",
+        content: "hello world " + new Date().toISOString(),
+        timestamp: Date.now(),
+      });
+    };
   }
 
   connectToSignalingServer() {
