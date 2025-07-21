@@ -192,6 +192,9 @@ const handleMessage = (socketId, message) => {
     case "share-screen":
       handleShareScreen(newData);
       break;
+    case "heartbeat":
+      // 处理心跳包, 保持链接状态
+      console.log("heartbeat received from", socketId);
     default:
       console.log("unknown message type");
       break;

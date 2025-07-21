@@ -23,6 +23,7 @@ class WebRTCClient {
     this.socket = null;
     this.isInitiator = false;
     this.connectedStamp = null;
+    this.heartbeatTimer = null;
 
     // callback
     this.onLocalStream = options.onLocalStream || (() => {});
@@ -143,6 +144,13 @@ class WebRTCClient {
           connectionStatus.textContent = "connected";
           this.connectedStamp = Date.now();
 
+          this.heartbeatTimer = setInterval(() => {
+            this.sendToRemote({
+              type: "heartbeat",
+              timestamp: Date.now(),
+            });
+          }, 40000);
+
           const reconnectionButton =
             document.getElementById("reconnectionButton");
           reconnectionButton && reconnectionButton.remove();
@@ -163,6 +171,10 @@ class WebRTCClient {
             "s";
           this.connectedStamp = null;
           this.socket = null;
+          if (this.heartbeatTimer) {
+            clearInterval(this.heartbeatTimer);
+            this.heartbeatTimer = null;
+          }
           this.log("disconnect from signaling server");
 
           const reconnectionButton = document.createElement("button");
