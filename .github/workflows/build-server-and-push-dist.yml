@@ -43,7 +43,7 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.SSH_TOKEN }}
           script: |
-            if [ -d ~/servers/dist ]; then
+            if [ -d ~/servers/mirror/dist ]; then
               echo "Removing previous dist directory..."
               rm -rf ~/servers/dist
             else  
@@ -57,8 +57,7 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.SSH_TOKEN }}
           source: dist/
-          target: ~/servers/
-
+          target: ~/servers/mirror
 
   build-server:
     name: just build server image
@@ -85,7 +84,7 @@ jobs:
             ${{ runner.os }}-npm-${{ github.ref_name }}-
             ${{ runner.os }}-npm-
             ${{ runner.os }}-
-      
+
       - name: install npm dependencies
         run: npm ci
 
@@ -99,7 +98,7 @@ jobs:
 
       - name: save docker image to tar
         run: docker save -o webrtc-server-${{ github.sha }}.tar webrtc-server:${{ github.sha }}
-      
+
       - name: upload docker image tar
         uses: appleboy/scp-action@v1.0.0
         with:
@@ -108,7 +107,7 @@ jobs:
           key: ${{ secrets.SSH_TOKEN }}
           source: webrtc-server-${{ github.sha }}.tar
           target: ~/docker-images/
-      
+
       - name: deploy via ssh
         uses: appleboy/ssh-action@v1.2.2
         with:
@@ -135,4 +134,3 @@ jobs:
               echo "Removing old image tag: $tag"
               docker rmi webrtc-server:$tag || true
             done
-          
