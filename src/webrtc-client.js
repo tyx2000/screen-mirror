@@ -17,6 +17,7 @@ class WebRTCClient {
     this.localStream = null;
     this.remoteStream = null;
     this.dataChannel = null;
+    this.pendingCandidates = [];
 
     // signaling server
     this.signalingServerUrl = signalingServerUrl;
@@ -214,11 +215,12 @@ class WebRTCClient {
       await this.createPeerConnection();
       await this.getMediaStream();
     } catch (error) {
-      this.peerConnection = null;
+      this.resetPeerConnection();
       this.sendToRemote({
         type: "destroy-room",
         roomId: this.roomId,
       });
+      this.roomId = null;
     }
   }
 
@@ -274,6 +276,7 @@ class WebRTCClient {
     await this.peerConnection.setRemoteDescription(
       new RTCSessionDescription(data.offer),
     );
+    await this.flushPendingCandidates();
 
     try {
       const answer = await this.peerConnection.createAnswer();
@@ -293,17 +296,21 @@ class WebRTCClient {
     await this.peerConnection.setRemoteDescription(
       new RTCSessionDescription(data.answer),
     );
+    await this.flushPendingCandidates();
   }
 
   async handleCandidate(data) {
     console.log("client handleCandidate", data);
-    try {
-      await this.peerConnection.addIceCandidate(
-        new RTCIceCandidate(data.candidate),
-      );
-    } catch (error) {
-      this.log("failed to add candidate");
+    if (!this.peerConnection) {
+      return;
     }
+
+    if (!this.peerConnection.remoteDescription) {
+      this.pendingCandidates.push(data.candidate);
+      return;
+    }
+
+    await this.addIceCandidate(data.candidate);
   }
 
   handleChatMessage(data) {
@@ -312,9 +319,33 @@ class WebRTCClient {
 
   handleErrorMessage(data) {
     const roomIdInputTip = document.getElementById("roomIdInputTip");
-    if (data.code === 404) {
-      roomIdInputTip.textContent = "房间号不存在";
+    const errorMessageMap = {
+      404: "房间号不存在",
+      409: "房间不可用",
+      410: "房主已离线",
+    };
+    roomIdInputTip.textContent = errorMessageMap[data.code] || data.message;
+
+    if (!this.isInitiator && [404, 409, 410].includes(data.code)) {
+      this.handleRoomDestroyed();
     }
+  }
+
+  async handlePeerLeft() {
+    if (!this.isInitiator || !this.localStream) {
+      return;
+    }
+
+    this.resetPeerConnection();
+    await this.createPeerConnection();
+    this.attachLocalTracks(this.localStream);
+  }
+
+  handleRoomDestroyed() {
+    this.roomId = null;
+    this.resetPeerConnection();
+    this.resetMediaState();
+    this.handleStreamEnded();
   }
 
   handleSocketMessage(message) {
@@ -330,9 +361,14 @@ class WebRTCClient {
       case "joined-room":
         this.handleJoinedRoom();
         break;
+      case "peer-left":
+        this.handlePeerLeft();
+        break;
+      case "left-room":
+        this.handleRoomDestroyed();
+        break;
       case "room-destroyed":
-        // 会议发起者断开连接，房间销毁，作为参与者自动离开房间
-        // todo 与会者之间可以继续交流
+        this.handleRoomDestroyed();
         break;
       case "offer":
         this.handleOffer(data);
@@ -352,7 +388,9 @@ class WebRTCClient {
   createPeerConnection() {
     return new Promise((resolve, reject) => {
       try {
+        this.resetPeerConnection();
         this.peerConnection = new RTCPeerConnection(this.config);
+        this.pendingCandidates = [];
 
         this.peerConnection.onicecandidate = (event) => {
           console.log("onicecandidate", this.isInitiator, event);
@@ -405,7 +443,7 @@ class WebRTCClient {
           );
         };
 
-        this.peerConnection.onIceGatheringStateChange = () => {
+        this.peerConnection.onicegatheringstatechange = () => {
           this.log(
             `ice gathering state: ${this.peerConnection.iceGatheringState}`,
           );
@@ -460,10 +498,13 @@ class WebRTCClient {
     if (initContainer) {
       initContainer.style.display = "none";
     }
-    const screenStream = document.createElement("video");
-    screenStream.id = "screenStream";
-    screenStream.autoplay = true;
-    document.body.appendChild(screenStream);
+    let screenStream = document.getElementById("screenStream");
+    if (!screenStream) {
+      screenStream = document.createElement("video");
+      screenStream.id = "screenStream";
+      screenStream.autoplay = true;
+      document.body.appendChild(screenStream);
+    }
     if (this.isInitiator) {
       this.onLocalStream = (stream) => {
         screenStream.srcObject = stream;
@@ -501,13 +542,7 @@ class WebRTCClient {
           this.localStream = stream;
           this.onLocalStream(this.localStream);
 
-          stream.getTracks().forEach((track) => {
-            this.peerConnection.addTrack(track, stream);
-
-            track.onended = () => this.handleStreamEnded();
-            track.onmute = () => {};
-            track.onunmute = () => {};
-          });
+          this.attachLocalTracks(stream);
 
           stream.onaddtrack = () => {};
           stream.onremovetrack = () => {};
@@ -651,25 +686,67 @@ class WebRTCClient {
   }
 
   async closeConnection() {
+    this.resetPeerConnection();
+    this.resetMediaState();
+
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
+  }
+
+  attachLocalTracks(stream) {
+    stream.getTracks().forEach((track) => {
+      this.peerConnection.addTrack(track, stream);
+
+      track.onended = () => this.handleStreamEnded();
+      track.onmute = () => {};
+      track.onunmute = () => {};
+    });
+  }
+
+  async addIceCandidate(candidate) {
+    try {
+      await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (error) {
+      this.log("failed to add candidate");
+    }
+  }
+
+  async flushPendingCandidates() {
+    if (!this.peerConnection?.remoteDescription) {
+      return;
+    }
+
+    const pendingCandidates = [...this.pendingCandidates];
+    this.pendingCandidates = [];
+
+    for (const candidate of pendingCandidates) {
+      await this.addIceCandidate(candidate);
+    }
+  }
+
+  resetPeerConnection() {
+    this.pendingCandidates = [];
+
     if (this.dataChannel) {
       this.dataChannel.close();
       this.dataChannel = null;
-    }
-
-    if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => track.stop());
-      this.localStream = null;
     }
 
     if (this.peerConnection) {
       this.peerConnection.close();
       this.peerConnection = null;
     }
+  }
 
-    if (this.socket) {
-      this.socket.close();
-      this.socket = null;
+  resetMediaState() {
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((track) => track.stop());
+      this.localStream = null;
     }
+
+    this.remoteStream = null;
   }
 }
 
