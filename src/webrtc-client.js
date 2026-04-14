@@ -1,3 +1,7 @@
+const WS_CLOSE_CODES = {
+  INVALID_SIGNALING_RESPONSE: 3003,
+};
+
 class WebRTCClient {
   constructor(signalingServerUrl, options = {}) {
     this.roomId = null;
@@ -25,6 +29,11 @@ class WebRTCClient {
     this.isInitiator = false;
     this.connectedStamp = null;
     this.heartbeatTimer = null;
+    this.connectionPromise = null;
+    this.currentSignalingUrl = this.resolveSignalingServerUrl(
+      this.signalingServerUrl,
+    );
+    this.isEndingShare = false;
 
     // callback
     this.onLocalStream = options.onLocalStream || (() => {});
@@ -50,8 +59,6 @@ class WebRTCClient {
   }
 
   async init() {
-    await this.connectToSignalingServer();
-
     const createRoomBtn = document.getElementById("createRoom");
     const joinRoomBtn = document.getElementById("joinRoom");
     // const leaveRoomBtn = document.getElementById("leaveRoom");
@@ -87,6 +94,11 @@ class WebRTCClient {
     // };
 
     createRoomBtn.onclick = async () => {
+      const connected = await this.ensureSocketConnected();
+      if (!connected) {
+        return;
+      }
+
       this.isInitiator = true;
       this.sendToRemote({
         type: "create-room",
@@ -100,6 +112,11 @@ class WebRTCClient {
     };
 
     joinRoomBtn.onclick = async () => {
+      const connected = await this.ensureSocketConnected();
+      if (!connected) {
+        return;
+      }
+
       this.isInitiator = false;
       this.roomId = roomIdInput.value;
       if (this.roomId) {
@@ -125,51 +142,97 @@ class WebRTCClient {
 
     const sendSocketMessageButton =
       document.getElementById("sendSocketMessage");
-    sendSocketMessageButton.onclick = () => {
+    sendSocketMessageButton.onclick = async () => {
+      const connected = await this.ensureSocketConnected();
+      if (!connected) {
+        return;
+      }
+
       this.sendToRemote({
         type: "chat-message",
         content: "hello world " + new Date().toISOString(),
         timestamp: Date.now(),
       });
     };
+
+    this.connectToSignalingServer().catch((error) => {
+      this.log(`failed to connect to signaling server: ${error.message}`);
+    });
+
+    this.setConnectionTarget(`signaling server: ${this.currentSignalingUrl}`);
   }
 
   connectToSignalingServer() {
-    const connectionStatus = document.getElementById("connectionStatus");
-    connectionStatus.textContent = "connecting...";
-    return new Promise((resolve, reject) => {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      return Promise.resolve();
+    }
+
+    if (this.connectionPromise) {
+      return this.connectionPromise;
+    }
+
+    const signalingUrl = this.currentSignalingUrl;
+    this.setConnectionStatus(`connecting ${signalingUrl}`);
+    this.setConnectionTarget(`signaling server: ${signalingUrl}`);
+
+    this.connectionPromise = new Promise((resolve, reject) => {
+      let settled = false;
+
+      const finalize = (callback) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        this.connectionPromise = null;
+        callback();
+      };
+
       try {
-        this.socket = new WebSocket(this.signalingServerUrl);
+        this.socket = new WebSocket(signalingUrl);
         this.socket.onopen = () => {
-          this.log("connected to signaling server");
-          connectionStatus.textContent = "connected";
-          this.connectedStamp = Date.now();
+          finalize(() => {
+            this.log("connected to signaling server");
+            this.setConnectionStatus("connected");
+            this.setConnectionTarget(`signaling server: ${signalingUrl}`);
+            this.connectedStamp = Date.now();
 
-          this.heartbeatTimer = setInterval(() => {
-            this.sendToRemote({
-              type: "heartbeat",
-              timestamp: Date.now(),
-            });
-          }, 40000);
+            this.heartbeatTimer = setInterval(() => {
+              this.sendToRemote({
+                type: "heartbeat",
+                timestamp: Date.now(),
+              });
+            }, 40000);
 
-          const reconnectionButton =
-            document.getElementById("reconnectionButton");
-          reconnectionButton && reconnectionButton.remove();
+            const reconnectionButton =
+              document.getElementById("reconnectionButton");
+            reconnectionButton && reconnectionButton.remove();
 
-          resolve();
+            resolve();
+          });
         };
         // 使用箭头函数，确保this指向WebRTCClient实例
         this.socket.onmessage = (message) => this.handleSocketMessage(message);
-        this.socket.onerror = (error) => {
+        this.socket.onerror = () => {
           this.log("socket error");
+          if (settled) {
+            return;
+          }
+          this.setConnectionStatus("failed to connect");
+          this.setConnectionTarget(
+            `signaling server: ${signalingUrl} | check local server on 8080`,
+          );
+          finalize(() => reject(new Error("socket error")));
         };
         this.socket.onclose = () => {
           // todo 自动重连
           document.title = "Screen Mirror";
-          connectionStatus.textContent =
-            "disconnected after " +
-            (Date.now() - this.connectedStamp) / 1000 +
-            "s";
+          const disconnectedDuration =
+            typeof this.connectedStamp === "number"
+              ? `disconnected after ${(Date.now() - this.connectedStamp) / 1000}s`
+              : "disconnected";
+          this.setConnectionStatus(disconnectedDuration);
+          this.setConnectionTarget(`signaling server: ${signalingUrl}`);
           this.connectedStamp = null;
           this.socket = null;
           if (this.heartbeatTimer) {
@@ -186,12 +249,21 @@ class WebRTCClient {
             await this.connectToSignalingServer();
           };
           document.body.appendChild(reconnectionButton);
+
+          finalize(() => reject(new Error("socket closed before ready")));
         };
       } catch (error) {
         this.log("failed to connect to signaling server");
+        this.setConnectionStatus("failed to connect");
+        this.setConnectionTarget(
+          `signaling server: ${signalingUrl} | check local server on 8080`,
+        );
+        this.connectionPromise = null;
         reject(error);
       }
     });
+
+    return this.connectionPromise;
   }
 
   sendToRemote(data) {
@@ -342,6 +414,7 @@ class WebRTCClient {
   }
 
   handleRoomDestroyed() {
+    this.isEndingShare = false;
     this.roomId = null;
     this.resetPeerConnection();
     this.resetMediaState();
@@ -349,7 +422,26 @@ class WebRTCClient {
   }
 
   handleSocketMessage(message) {
-    const data = JSON.parse(message.data);
+    let data;
+    try {
+      data = JSON.parse(message.data);
+    } catch {
+      this.log(`unexpected non-JSON message: ${message.data}`);
+      this.setConnectionStatus(
+        "invalid signaling server response, check ws://127.0.0.1:8080",
+      );
+      this.setConnectionTarget(
+        `received text frame "${message.data}" from ${this.currentSignalingUrl}`,
+      );
+      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+        this.socket.close(
+          WS_CLOSE_CODES.INVALID_SIGNALING_RESPONSE,
+          "invalid signaling server response",
+        );
+      }
+      return;
+    }
+
     console.log("handleSocketMessage", data);
     switch (data.type) {
       case "chat-message":
@@ -385,6 +477,49 @@ class WebRTCClient {
     }
   }
 
+  resolveSignalingServerUrl(signalingServerUrl) {
+    if (/^wss?:\/\//.test(signalingServerUrl)) {
+      return signalingServerUrl;
+    }
+
+    if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      return `${protocol}//${window.location.host}${signalingServerUrl}`;
+    }
+
+    return `ws://127.0.0.1:8080${signalingServerUrl}`;
+  }
+
+  async ensureSocketConnected() {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      return true;
+    }
+
+    try {
+      await this.connectToSignalingServer();
+      return true;
+    } catch (error) {
+      this.log(`unable to connect: ${error.message}`);
+      this.setConnectionStatus("unable to connect, start signaling server on 8080");
+      this.setConnectionTarget(`signaling server: ${this.currentSignalingUrl}`);
+      return false;
+    }
+  }
+
+  setConnectionStatus(text) {
+    const connectionStatus = document.getElementById("connectionStatus");
+    if (connectionStatus) {
+      connectionStatus.textContent = text;
+    }
+  }
+
+  setConnectionTarget(text) {
+    const connectionTarget = document.getElementById("connectionTarget");
+    if (connectionTarget) {
+      connectionTarget.textContent = text;
+    }
+  }
+
   createPeerConnection() {
     return new Promise((resolve, reject) => {
       try {
@@ -408,9 +543,15 @@ class WebRTCClient {
           this.remoteStream = event.streams[0];
           this.onRemoteStream(this.remoteStream);
 
+          if (this.remoteStream) {
+            this.remoteStream.oninactive = () => {
+              this.handleRemoteStreamEnded();
+            };
+          }
+
           // 接收远端stream被中断
           event.track.onended = () => {
-            this.handleStreamEnded();
+            this.handleRemoteStreamEnded();
           };
         };
 
@@ -525,8 +666,46 @@ class WebRTCClient {
       initContainer.style.display = "flex";
     }
     if (screenStream) {
+      screenStream.srcObject = null;
       screenStream.remove();
     }
+  }
+
+  async handleLocalShareEnded() {
+    if (this.isEndingShare || !this.isInitiator) {
+      return;
+    }
+
+    const localStream = this.localStream;
+    if (!localStream) {
+      return;
+    }
+
+    const hasActiveTracks = localStream
+      .getTracks()
+      .some((track) => track.readyState !== "ended");
+    if (hasActiveTracks) {
+      return;
+    }
+
+    this.isEndingShare = true;
+
+    if (this.roomId && this.socket?.readyState === WebSocket.OPEN) {
+      this.sendToRemote({
+        type: "destroy-room",
+        roomId: this.roomId,
+      });
+    }
+
+    this.handleRoomDestroyed();
+  }
+
+  handleRemoteStreamEnded() {
+    if (this.isInitiator) {
+      return;
+    }
+
+    this.handleRoomDestroyed();
   }
 
   getMediaStream() {
@@ -540,6 +719,9 @@ class WebRTCClient {
           this.showScreenStream();
 
           this.localStream = stream;
+          this.localStream.oninactive = () => {
+            this.handleLocalShareEnded();
+          };
           this.onLocalStream(this.localStream);
 
           this.attachLocalTracks(stream);
@@ -699,7 +881,7 @@ class WebRTCClient {
     stream.getTracks().forEach((track) => {
       this.peerConnection.addTrack(track, stream);
 
-      track.onended = () => this.handleStreamEnded();
+      track.onended = () => this.handleLocalShareEnded();
       track.onmute = () => {};
       track.onunmute = () => {};
     });
@@ -742,8 +924,21 @@ class WebRTCClient {
 
   resetMediaState() {
     if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => track.stop());
+      this.localStream.oninactive = null;
+      this.localStream.getTracks().forEach((track) => {
+        track.onended = null;
+        track.onmute = null;
+        track.onunmute = null;
+        track.stop();
+      });
       this.localStream = null;
+    }
+
+    if (this.remoteStream) {
+      this.remoteStream.oninactive = null;
+      this.remoteStream.getTracks().forEach((track) => {
+        track.onended = null;
+      });
     }
 
     this.remoteStream = null;
